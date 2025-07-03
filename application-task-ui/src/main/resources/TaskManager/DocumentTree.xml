@@ -1,0 +1,152 @@
+<?xml version="1.1" encoding="UTF-8"?>
+
+<!--
+ * See the NOTICE file distributed with this work for additional
+ * information regarding copyright ownership.
+ *
+ * This is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as
+ * published by the Free Software Foundation; either version 2.1 of
+ * the License, or (at your option) any later version.
+ *
+ * This software is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this software; if not, write to the Free
+ * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+ * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+-->
+
+<xwikidoc version="1.6" reference="TaskManager.DocumentTree" locale="">
+  <web>TaskManager</web>
+  <name>DocumentTree</name>
+  <language/>
+  <defaultLanguage/>
+  <translation>0</translation>
+  <creator>xwiki:XWiki.Admin</creator>
+  <parent>Main.WebHome</parent>
+  <author>xwiki:XWiki.Admin</author>
+  <contentAuthor>xwiki:XWiki.Admin</contentAuthor>
+  <version>1.1</version>
+  <title>DocumentTree</title>
+  <comment/>
+  <minorEdit>false</minorEdit>
+  <syntaxId>xwiki/2.1</syntaxId>
+  <hidden>true</hidden>
+  <content>{{include reference="XWiki.DocumentTreeMacros"/}}
+
+{{velocity wiki="false"}}
+#macro (handleDocumentTreeRequestSpacePicker)
+  #if ($request.action)
+    #if ($services.csrf.isTokenValid($request.form_token))
+      #if ($request.action == 'create' &amp;&amp; $request.type == 'addDocument')
+        #handleNewNodeCreationRequest()
+      #else
+        $response.sendError(400, 'The specified action is not supported.')
+      #end
+    #elseif ($isAjaxRequest)
+      $response.sendError(403, 'The CSRF token is missing.')
+    #else
+      $response.sendRedirect($services.csrf.getResubmissionURL())
+    #end
+  #else
+    #set ($data = $NULL)
+    #if ($request.data == 'children')
+      #getChildren($request.id $data)
+    #elseif ($request.data == 'path')
+      #getPath($request.id $data)
+    #elseif ($request.data == 'contextMenu')
+      #getContextMenu($data)
+    #elseif ($request.data == 'suggestions')
+      #getSuggestionsSpacePicker($data)
+    #end
+    #if ($data)
+      #postProcessDocumentTreeData($data)
+      #jsonResponse($data)
+    #else
+      $response.sendError(404)
+    #end
+  #end
+#end
+
+#macro (getSuggestionsSpacePicker $return)
+  #set ($limit = 6)
+  #set ($text = "$!request.query")
+  #set ($lists = [])
+  #getRootReference
+  #set ($ancestorsOf = {
+    'space': ['farm', 'wiki', 'space'],
+    'document': ['farm', 'wiki', 'space', 'document'],
+    'attachment': ['farm', 'wiki', 'space', 'document', 'attachments']
+  })
+  #if ((!$docTreeConfig.showSpaces || $docTreeConfig.showTerminalDocuments)
+      &amp;&amp; $ancestorsOf.document.contains($rootType))
+    #addDocumentSuggestions($text $limit $lists)
+  #end
+  #if ($docTreeConfig.showAttachments &amp;&amp; $ancestorsOf.attachment.contains($rootType))
+    #addAttachmentSuggestions($text $limit $lists)
+  #end
+  #if ($docTreeConfig.showSpaces &amp;&amp; $ancestorsOf.space.contains($rootType))
+    #addSpaceSuggestionsSpacePicker($text $limit $lists)
+  #end
+  #limitTotalCount($lists $limit)
+  #set ($output = [])
+  #foreach ($list in $lists)
+    #foreach ($node in $list)
+      ## Use the node path as suggestion info.
+      #getPath($node.id $path)
+      ## The path is empty when the node is not found in the tree. This happens if the tree finder doesn't restrict the
+      ## search to the nodes that are available in the tree.
+      #if ($path.size() &gt; 0)
+        #displayPath($path)
+        #set ($node.data.info = $stringtool.join($path.subList(0, $mathtool.sub($path.size(), 1)), ' / '))
+        #set ($discard = $output.add($node))
+      #end
+    #end
+  #end
+  #set ($return = $NULL)
+  #setVariable("$return" $output)
+#end
+
+
+#macro (addSpaceSuggestionsSpacePicker $text $limit $suggestions)
+  #searchSpacesSpacePicker($text $limit $spaceReferences)
+  #set ($spaceSuggestions = [])
+  #foreach ($spaceReference in $spaceReferences)
+    #maybeAddSpaceNode($spaceReference $spaceSuggestions)
+  #end
+  #set ($discard = $suggestions.add($spaceSuggestions))
+#end
+
+#macro (searchSpacesSpacePicker $text $limit $return)
+  #set ($constraints = ["(lower(doc.title) like lower(:spaceNamePattern)) or (lower(doc.space) like lower(:spaceNamePattern))"])
+  #set ($params = {'spaceNamePattern': "%$!text.replaceAll('([%_!])', '!$1')%"})
+  #addSpaceLocationDatabaseConstraint($rootReference $constraints $params 'space.reference')
+  #set ($statement = "select distinct doc.space from XWikiDocument doc where $stringtool.join($constraints, ' and ') "
+    + "order by lower(doc.space ), doc.space")
+  #set ($query = $services.query.hql($statement).setLimit($limit))
+  #addWikiLocationDatabaseConstraint($rootReference $query)
+  #if ($docTreeConfig.filterHiddenDocuments)
+    #set ($query = $query.addFilter('hidden/space'))
+  #end
+  #foreach ($entry in $params.entrySet())
+    #set ($query = $query.bindValue($entry.key, $entry.value))
+  #end
+  #set ($spaceReferences = [])
+  #foreach ($localSpaceRef in $query.execute())
+    #set ($discard = $spaceReferences.add($services.model.resolveSpace($localSpaceRef)))
+  #end
+  #set ($return = $NULL)
+  #setVariable("$return" $spaceReferences)
+#end
+
+
+#if ($xcontext.action == 'get')
+  #updateDocTreeConfigFromRequest
+  #handleDocumentTreeRequestSpacePicker
+#end
+{{/velocity}}</content>
+</xwikidoc>

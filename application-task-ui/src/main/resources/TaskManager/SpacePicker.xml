@@ -39,7 +39,7 @@
   <content>
 {{velocity output='false'}}
 #template('display_macros.vm')
-#template('documentTree_macros.vm')
+#template('spacePicker/spacePickerDocumentTree.vm')
 {{/velocity}}
 {{velocity}}
 #initRequiredSkinExtensions()
@@ -59,7 +59,7 @@
           &lt;/button&gt;
         &lt;/div&gt;
         &lt;div class="modal-body"&gt;
-          #documentTree({
+          #documentTreeSpacePicker({
             'finder':true,
             'showWikis': true,
             'showWikiPrettyName': true,
